@@ -1,0 +1,12 @@
+version: 2
+ethernets:
+  ${INTERFACE_NAME}:
+    dhcp4: false
+    addresses:
+      - ${STATIC_IP_CIDR}
+    routes:
+      - to: 0.0.0.0/0
+        via: ${GATEWAY_IP}
+    nameservers:
+      addresses:
+${NAMESERVERS_YAML}

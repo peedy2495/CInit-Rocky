@@ -1,0 +1,2 @@
+instance-id: Rocky10-FreeIPA-Server
+local-hostname: ${FQDN}

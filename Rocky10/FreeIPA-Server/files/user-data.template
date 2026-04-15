@@ -1,0 +1,85 @@
+#cloud-config
+fqdn: ${FQDN}
+hostname: ${HOSTNAME_SHORT}
+prefer_fqdn_over_hostname: true
+manage_etc_hosts: false
+preserve_hostname: false
+timezone: ${TIMEZONE}
+
+ssh_pwauth: false
+disable_root: false
+
+users:
+  - default
+  - name: root
+    lock_passwd: false
+    hashed_passwd: "${ROOT_PASSWORD_HASH}"
+  - name: sysadmin
+    gecos: Local Sysadmin
+    groups: [wheel]
+    sudo: ["ALL=(ALL) ALL"]
+    shell: /bin/bash
+    lock_passwd: false
+    hashed_passwd: "${SYSADMIN_PASSWORD_HASH}"
+    ssh_authorized_keys:
+      - ${SYSADMIN_SSH_PUBKEY}
+  - name: ansible
+    gecos: Automation User
+    groups: [wheel]
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ANSIBLE_SSH_PUBKEY}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-cloud-hardening.conf
+    permissions: '0644'
+    owner: root:root
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      ChallengeResponseAuthentication no
+      PubkeyAuthentication yes
+      PermitRootLogin no
+      PermitEmptyPasswords no
+      UsePAM yes
+
+  - path: /etc/sudoers.d/10-rootpw
+    permissions: '0440'
+    owner: root:root
+    content: |
+      Defaults rootpw
+
+  - path: /etc/hosts
+    permissions: '0644'
+    owner: root:root
+    content: |
+      127.0.0.1 localhost localhost.localdomain
+      ::1 localhost localhost.localdomain
+      ${STATIC_IP} ${FQDN} ${HOSTNAME_SHORT}
+
+runcmd:
+  - bash -c 'if [[ -n "${RPM_PROXY_URL}" ]]; then sed -i -E "s|^mirrorlist=|#mirrorlist=|g; s|^#baseurl=|baseurl=|g" /etc/yum.repos.d/*.repo; sed -i "s|http://dl.rockylinux.org/|${RPM_PROXY_URL}|g" /etc/yum.repos.d/*.repo; fi'
+  - dnf -y upgrade
+  - dnf -y install chrony firewalld bind-utils
+  - chage -I -1 -m 0 -M 99999 -E -1 root
+  - chage -I -1 -m 0 -M 99999 -E -1 sysadmin
+  - systemctl enable --now chronyd
+  - chronyc -a makestep || true
+  - systemctl enable --now firewalld
+  - firewall-cmd --permanent --add-port=53/tcp
+  - firewall-cmd --permanent --add-port=53/udp
+  - firewall-cmd --permanent --add-port=80/tcp
+  - firewall-cmd --permanent --add-port=88/tcp
+  - firewall-cmd --permanent --add-port=88/udp
+  - firewall-cmd --permanent --add-port=123/udp
+  - firewall-cmd --permanent --add-port=389/tcp
+  - firewall-cmd --permanent --add-port=443/tcp
+  - firewall-cmd --permanent --add-port=464/tcp
+  - firewall-cmd --permanent --add-port=464/udp
+  - firewall-cmd --permanent --add-port=636/tcp
+  - firewall-cmd --reload
+  - restorecon -Rv /etc/ssh /etc/sudoers.d /etc/hosts
+  - dnf -y clean all
+  - systemctl restart sshd

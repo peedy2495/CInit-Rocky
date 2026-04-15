@@ -1,0 +1,6 @@
+**/files/.env
+**/files/cloud-config
+**/files/user-data
+**/files/meta-data
+**/files/network-config
+**/image/*.iso
