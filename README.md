@@ -56,7 +56,7 @@ The FreeIPA template prepares a Rocky 10 cloud image with:
 - `root`, `sysadmin`, and `ansible` users
 - SSH hardening with public key access for the managed users
 - firewall ports for FreeIPA-related services
-- `chrony`, `firewalld`, and `bind-utils`
+- `chrony`, `firewalld`, `bind-utils`, and `wget`
 - no automatic `ipa-server-install`
 
 This template prepares the OS for FreeIPA deployment, but does not run the interactive FreeIPA installer itself.
@@ -121,13 +121,13 @@ cd Rocky10/FreeIPA-Server
 
 ## RPM Proxy Behavior
 
-If `RPM_PROXY_URL` is set in `.env`, `runcmd` updates every repo file in `/etc/yum.repos.d` by:
+If `RPM_PROXY_URL` is set in `.env`, `bootcmd` updates every repo file in `/etc/yum.repos.d` by:
 
 - disabling `mirrorlist=`
 - enabling `baseurl=`
 - replacing `http://dl.rockylinux.org/` with the supplied proxy prefix
 
-This happens before package upgrade and installation, because package operations only work after the repo definitions are adjusted for the proxy environment.
+This happens in `bootcmd`, before cloud-init package update, upgrade, and installation, because package operations only work after the repo definitions are adjusted for the proxy environment.
 
 If `RPM_PROXY_URL` is empty, repo files are left unchanged.
 
