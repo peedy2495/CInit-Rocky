@@ -1,6 +1,9 @@
 version: 2
 ethernets:
-  ${INTERFACE_NAME}:
+  eth0:
+    match:
+      macaddress: ${INTERFACE_MAC}
+    set-name: eth0
     dhcp4: false
     addresses:
       - ${STATIC_IP_CIDR}

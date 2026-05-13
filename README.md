@@ -73,11 +73,12 @@ Purpose:
 It asks for:
 
 - `FQDN`
-- interface name
+- interface MAC address
 - static IP with CIDR
 - gateway IP
 - comma-separated nameservers
 - timezone
+- optional timeserver address
 - optional RPM proxy baseurl prefix
 - root password
 - sysadmin password
@@ -87,6 +88,9 @@ It asks for:
 Important details:
 
 - empty RPM proxy input means no repo rewrite is performed
+- empty timeserver input means chrony keeps the image default time sources
+- when `files/.env` already exists, pressing Enter keeps the existing value
+- leaving an existing password prompt empty keeps the existing password hash
 - `HOSTNAME_SHORT` is derived from `FQDN`
 - `STATIC_IP` is derived from `STATIC_IP_CIDR`
 - nameservers are rendered into YAML list format for cloud-init

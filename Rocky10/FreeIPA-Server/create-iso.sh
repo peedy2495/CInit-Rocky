@@ -53,7 +53,7 @@ set +a
 
 required_vars=(
   FQDN
-  INTERFACE_NAME
+  INTERFACE_MAC
   STATIC_IP_CIDR
   STATIC_IP
   GATEWAY_IP
@@ -76,6 +76,9 @@ if [[ -z "${RPM_PROXY_URL+x}" ]]; then
   printf 'Required variable RPM_PROXY_URL is not set in %s\n' "${env_file}" >&2
   exit 1
 fi
+
+TIMESERVER="${TIMESERVER:-}"
+export TIMESERVER
 
 HOSTNAME_SHORT="${FQDN%%.*}"
 export HOSTNAME_SHORT

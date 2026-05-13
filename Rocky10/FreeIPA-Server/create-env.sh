@@ -45,12 +45,38 @@ prompt_secret() {
   done
 }
 
-prompt_pubkey() {
+prompt_secret_optional_existing() {
   local prompt_label="$1"
+  local has_existing="$2"
   local value
 
+  if [[ "${has_existing}" == "yes" ]]; then
+    read -r -s -p "${prompt_label} [keep existing]: " value
+    printf '\n' >&2
+    printf '%s' "${value}"
+    return 0
+  fi
+
+  prompt_secret "${prompt_label}"
+}
+
+prompt_pubkey() {
+  local prompt_label="$1"
+  local default_value="${2:-}"
+  local value
+  local prompt_text="${prompt_label}: "
+
+  if [[ -n "${default_value}" ]]; then
+    prompt_text="${prompt_label} [keep existing]: "
+  fi
+
   while true; do
-    read -r -p "${prompt_label}: " value
+    read -r -p "${prompt_text}" value
+    if [[ -z "${value}" && -n "${default_value}" ]]; then
+      printf '\n' >&2
+      printf '%s' "${default_value}"
+      return 0
+    fi
     if [[ "${value}" == ssh-* ]]; then
       printf '\n' >&2
       printf '%s' "${value}"
@@ -62,10 +88,20 @@ prompt_pubkey() {
 
 prompt_text() {
   local prompt_label="$1"
+  local default_value="${2:-}"
   local value
+  local prompt_text="${prompt_label}: "
+
+  if [[ -n "${default_value}" ]]; then
+    prompt_text="${prompt_label} [${default_value}]: "
+  fi
 
   while true; do
-    read -r -p "${prompt_label}: " value
+    read -r -p "${prompt_text}" value
+    if [[ -z "${value}" && -n "${default_value}" ]]; then
+      printf '%s' "${default_value}"
+      return 0
+    fi
     if [[ -n "${value}" ]]; then
       printf '%s' "${value}"
       return 0
@@ -89,10 +125,69 @@ prompt_text_default() {
 
 prompt_text_optional() {
   local prompt_label="$1"
+  local default_value="${2:-}"
   local value
+  local prompt_text="${prompt_label}: "
 
-  read -r -p "${prompt_label}: " value
+  if [[ -n "${default_value}" ]]; then
+    prompt_text="${prompt_label} [${default_value}]: "
+  fi
+
+  read -r -p "${prompt_text}" value
+  if [[ -z "${value}" ]]; then
+    printf '%s' "${default_value}"
+    return 0
+  fi
   printf '%s' "${value}"
+}
+
+prompt_timeserver_optional() {
+  local prompt_label="$1"
+  local default_value="${2:-}"
+  local value
+  local prompt_text="${prompt_label}: "
+
+  if [[ -n "${default_value}" ]]; then
+    prompt_text="${prompt_label} [${default_value}]: "
+  fi
+
+  while true; do
+    read -r -p "${prompt_text}" value
+    if [[ -z "${value}" ]]; then
+      printf '%s' "${default_value}"
+      return 0
+    fi
+    if [[ -z "${value}" || "${value}" =~ ^[[:alnum:].:_-]+$ ]]; then
+      printf '%s' "${value}"
+      return 0
+    fi
+    printf 'Please provide a hostname or IP address, or leave empty for none.\n' >&2
+  done
+}
+
+prompt_mac() {
+  local prompt_label="$1"
+  local default_value="${2:-}"
+  local value
+  local prompt_text="${prompt_label}: "
+
+  if [[ -n "${default_value}" ]]; then
+    prompt_text="${prompt_label} [${default_value}]: "
+  fi
+
+  while true; do
+    read -r -p "${prompt_text}" value
+    value="${value,,}"
+    if [[ -z "${value}" && -n "${default_value}" ]]; then
+      printf '%s' "${default_value}"
+      return 0
+    fi
+    if [[ "${value}" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
+      printf '%s' "${value}"
+      return 0
+    fi
+    printf 'Please provide a valid MAC address like 52:54:00:12:34:56.\n' >&2
+  done
 }
 
 trim_text() {
@@ -100,6 +195,26 @@ trim_text() {
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
   printf '%s' "${value}"
+}
+
+nameservers_yaml_to_csv() {
+  local yaml="$1"
+  local csv=''
+  local line
+  local value
+
+  while IFS= read -r line; do
+    value="${line#*- }"
+    value="$(trim_text "${value}")"
+    if [[ -n "${value}" && "${value}" != "${line}" ]]; then
+      if [[ -n "${csv}" ]]; then
+        csv+=","
+      fi
+      csv+="${value}"
+    fi
+  done <<< "${yaml}"
+
+  printf '%s' "${csv}"
 }
 
 escape_squote() {
@@ -111,21 +226,42 @@ if [[ ! -f "${template_file}" ]]; then
   exit 1
 fi
 
-fqdn="$(prompt_text "FQDN (example: ipa.example.com)")"
-interface_name="$(prompt_text_default "Interface name" "enp1s0")"
-static_ip_cidr="$(prompt_text "Static IP with CIDR (example: 192.168.0.100/24)")"
-gateway_ip="$(prompt_text "Gateway IP (example: 192.168.0.1)")"
-nameservers_csv="$(prompt_text "Nameservers comma separated (example: 192.168.0.1,1.1.1.1)")"
-timezone="$(prompt_text_default "Timezone" "Europe/Berlin")"
-rpm_proxy_url="$(prompt_text_optional "RPM proxy baseurl prefix (empty for none)")"
+if [[ -f "${env_file}" ]]; then
+  set -a
+  source "${env_file}"
+  set +a
+  printf 'Loaded existing defaults from %s.\n' "${env_file}" >&2
+fi
 
-root_password="$(prompt_secret "Root password")"
-sysadmin_password="$(prompt_secret "sysadmin password")"
-sysadmin_pubkey="$(prompt_pubkey "sysadmin SSH public key")"
-ansible_pubkey="$(prompt_pubkey "ansible SSH public key")"
+nameservers_csv_default="$(nameservers_yaml_to_csv "${NAMESERVERS_YAML:-}")"
 
-root_hash="$(generate_yescrypt_hash "${root_password}")"
-sysadmin_hash="$(generate_yescrypt_hash "${sysadmin_password}")"
+fqdn="$(prompt_text "FQDN (example: ipa.example.com)" "${FQDN:-}")"
+interface_mac="$(prompt_mac "Interface MAC address (example: 52:54:00:12:34:56)" "${INTERFACE_MAC:-}")"
+static_ip_cidr="$(prompt_text "Static IP with CIDR (example: 192.168.0.100/24)" "${STATIC_IP_CIDR:-}")"
+gateway_ip="$(prompt_text "Gateway IP (example: 192.168.0.1)" "${GATEWAY_IP:-}")"
+nameservers_csv="$(prompt_text "Nameservers comma separated (example: 192.168.0.1,1.1.1.1)" "${nameservers_csv_default}")"
+timezone="$(prompt_text_default "Timezone" "${TIMEZONE:-Europe/Berlin}")"
+timeserver="$(prompt_timeserver_optional "Timeserver address (empty for none)" "${TIMESERVER:-}")"
+rpm_proxy_url="$(prompt_text_optional "RPM proxy baseurl prefix (empty for none)" "${RPM_PROXY_URL:-}")"
+
+root_password="$(prompt_secret_optional_existing "Root password" "$([[ -n "${ROOT_PASSWORD_HASH:-}" ]] && printf yes || printf no)")"
+sysadmin_password="$(prompt_secret_optional_existing "sysadmin password" "$([[ -n "${SYSADMIN_PASSWORD_HASH:-}" ]] && printf yes || printf no)")"
+sysadmin_pubkey="$(prompt_pubkey "sysadmin SSH public key" "${SYSADMIN_SSH_PUBKEY:-}")"
+ansible_pubkey="$(prompt_pubkey "ansible SSH public key" "${ANSIBLE_SSH_PUBKEY:-}")"
+
+if [[ -n "${root_password}" ]]; then
+  root_hash="$(generate_yescrypt_hash "${root_password}")"
+else
+  root_hash="${ROOT_PASSWORD_HASH:-}"
+  root_password="${ROOT_PASSWORD:-}"
+fi
+
+if [[ -n "${sysadmin_password}" ]]; then
+  sysadmin_hash="$(generate_yescrypt_hash "${sysadmin_password}")"
+else
+  sysadmin_hash="${SYSADMIN_PASSWORD_HASH:-}"
+  sysadmin_password="${SYSADMIN_PASSWORD:-}"
+fi
 
 hostname_short="${fqdn%%.*}"
 static_ip="${static_ip_cidr%%/*}"
@@ -147,12 +283,13 @@ fi
 cat > "${env_file}" <<EOF
 FQDN='$(escape_squote "${fqdn}")'
 HOSTNAME_SHORT='$(escape_squote "${hostname_short}")'
-INTERFACE_NAME='$(escape_squote "${interface_name}")'
+INTERFACE_MAC='$(escape_squote "${interface_mac}")'
 STATIC_IP_CIDR='$(escape_squote "${static_ip_cidr}")'
 STATIC_IP='$(escape_squote "${static_ip}")'
 GATEWAY_IP='$(escape_squote "${gateway_ip}")'
 NAMESERVERS_YAML='$(escape_squote "${nameservers_yaml}")'
 TIMEZONE='$(escape_squote "${timezone}")'
+TIMESERVER='$(escape_squote "${timeserver}")'
 RPM_PROXY_URL='$(escape_squote "${rpm_proxy_url}")'
 ROOT_PASSWORD='$(escape_squote "${root_password}")'
 ROOT_PASSWORD_HASH='$(escape_squote "${root_hash}")'
@@ -163,4 +300,4 @@ ANSIBLE_SSH_PUBKEY='$(escape_squote "${ansible_pubkey}")'
 EOF
 
 chmod 600 "${env_file}"
-printf 'Wrote %s with host/network/timezone, repo, password hashes and SSH public keys.\n' "${env_file}"
+printf 'Wrote %s with host/network/time, repo, password hashes and SSH public keys.\n' "${env_file}"

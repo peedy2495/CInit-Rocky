@@ -65,6 +65,7 @@ runcmd:
   - dnf -y install chrony firewalld bind-utils
   - chage -I -1 -m 0 -M 99999 -E -1 root
   - chage -I -1 -m 0 -M 99999 -E -1 sysadmin
+  - bash -c 'if [[ -n "${TIMESERVER}" ]]; then sed -i -E "s/^(pool|server)[[:space:]]+/#&/" /etc/chrony.conf; printf "\nserver ${TIMESERVER} iburst\n" >> /etc/chrony.conf; fi'
   - systemctl enable --now chronyd
   - chronyc -a makestep || true
   - systemctl enable --now firewalld
