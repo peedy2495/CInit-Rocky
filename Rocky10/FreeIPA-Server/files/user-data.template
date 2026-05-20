@@ -19,6 +19,8 @@ packages:
   - firewalld
   - bind-utils
   - wget
+  - ipa-server
+  - ipa-server-dns
 
 users:
   - name: root
